@@ -1,0 +1,117 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: TsubakiDev <i@tsubakidev.cc>
+Date: Fri, 16 Aug 2024 22:02:17 +0800
+Subject: [PATCH] Track all world's MSPT
+
+
+diff --git a/src/main/java/io/papermc/paper/command/MSPTCommand.java b/src/main/java/io/papermc/paper/command/MSPTCommand.java
+index 8b5293b0c696ef21d0101493ffa41b60bf0bc86b..4b4574deb34a4920bde9203ec4678e98759cb4c7 100644
+--- a/src/main/java/io/papermc/paper/command/MSPTCommand.java
++++ b/src/main/java/io/papermc/paper/command/MSPTCommand.java
+@@ -78,6 +78,46 @@ public final class MSPTCommand extends Command {
+                 )
+             )
+         );
++
++        // Horizon start - track all world's MSPT
++        sender.sendMessage(text());
++        sender.sendMessage(text().content("World tick times ").color(GOLD)
++                .append(text().color(YELLOW)
++                        .append(
++                                text("("),
++                                text("avg", GRAY),
++                                text("/"),
++                                text("min", GRAY),
++                                text("/"),
++                                text("max", GRAY),
++                                text(")")
++                        )
++                ).append(
++                        text(" from last 5s"),
++                        text(",", GRAY),
++                        text(" 10s"),
++                        text(",", GRAY),
++                        text(" 1m"),
++                        text(":", YELLOW)
++                )
++        );
++        for (net.minecraft.server.level.ServerLevel serverLevel : server.getAllLevels()) {
++            List<Component> worldTimes = new ArrayList<>();
++            worldTimes.addAll(eval(serverLevel.tickTimes5s.getTimes()));
++            worldTimes.addAll(eval(serverLevel.tickTimes10s.getTimes()));
++            worldTimes.addAll(eval(serverLevel.tickTimes60s.getTimes()));
++
++            sender.sendMessage(text().content("◴ " + serverLevel.getWorld().getName() + ": ").color(GOLD)
++                    .append(text().color(GRAY)
++                            .append(
++                                    worldTimes.get(0), SLASH, worldTimes.get(1), SLASH, worldTimes.get(2), text(", ", YELLOW),
++                                    worldTimes.get(3), SLASH, worldTimes.get(4), SLASH, worldTimes.get(5), text(", ", YELLOW),
++                                    worldTimes.get(6), SLASH, worldTimes.get(7), SLASH, worldTimes.get(8)
++                            )
++                    )
++            );
++        }
++        // Horizon end
+         return true;
+     }
+ 
+diff --git a/src/main/java/net/minecraft/CrashReport.java b/src/main/java/net/minecraft/CrashReport.java
+index 710477ae27ebc5afdf0012ef0867d05efd293c24..d03f673b6994c462ddfb1effe2993867f6e0a31e 100644
+--- a/src/main/java/net/minecraft/CrashReport.java
++++ b/src/main/java/net/minecraft/CrashReport.java
+@@ -32,7 +32,7 @@ public class CrashReport {
+     private boolean trackingStackTrace = true;
+     private StackTraceElement[] uncategorizedStackTrace = new StackTraceElement[0];
+     private final SystemReport systemReport = new SystemReport();
+-    private List<String> extraInfo = List.of("", "DO NOT REPORT THIS TO PAPER! REPORT TO PURPUR INSTEAD!", ""); // Purpur - Rebrand
++    private List<String> extraInfo = List.of("", "DO NOT REPORT THIS TO PAPER! REPORT TO HORIZON INSTEAD!", ""); // Purpur - Rebrand // Horizon
+ 
+     public CrashReport(String message, Throwable cause) {
+         io.papermc.paper.util.StacktraceDeobfuscator.INSTANCE.deobfuscateThrowable(cause); // Paper
+diff --git a/src/main/java/net/minecraft/server/MinecraftServer.java b/src/main/java/net/minecraft/server/MinecraftServer.java
+index 6fb35c36d964c96a42911b8a9e11590aaa5cca59..7fac11f3a153783446f8d23a4b39b85c0b2c6c05 100644
+--- a/src/main/java/net/minecraft/server/MinecraftServer.java
++++ b/src/main/java/net/minecraft/server/MinecraftServer.java
+@@ -1765,7 +1765,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+         // Paper start - Folia scheduler API
+         ((io.papermc.paper.threadedregions.scheduler.FoliaGlobalRegionScheduler) Bukkit.getGlobalRegionScheduler()).tick();
+         getAllLevels().forEach(level -> {
+-            for (final Entity entity : level.moonrise$getEntityLookup().getAllCopy()) { // Paper - rewrite chunk system
++            for (final Entity entity : level.getEntities().getAll()) { // Paper - rewrite chunk system // Horizon - track all world's MSPT
+                 if (entity.isRemoved()) {
+                     continue;
+                 }
+@@ -1841,7 +1841,15 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+ 
+             try {
+                 //worldserver.timings.doTick.startTiming(); // Spigot // Purpur
++                long i = Util.getNanos(); // Horizon - track all world's MSPT
+                 worldserver.tick(shouldKeepTicking);
++                // Horizon start - track all world's MSPT
++                long j = Util.getNanos() - i;
++                worldserver.tickTimes5s.add(this.tickCount, j);
++                worldserver.tickTimes10s.add(this.tickCount, j);
++                worldserver.tickTimes60s.add(this.tickCount, j);
++                // Horizon end
++
+                 //worldserver.timings.doTick.stopTiming(); // Spigot // Purpur
+             } catch (Throwable throwable) {
+                 CrashReport crashreport = CrashReport.forThrowable(throwable, "Exception ticking world");
+diff --git a/src/main/java/net/minecraft/server/level/ServerLevel.java b/src/main/java/net/minecraft/server/level/ServerLevel.java
+index 29e31ed2d09aee3b668816a683ab0f89026fdf4f..c073c34939e0d1ad8ab804aeb776a38ddf944bfa 100644
+--- a/src/main/java/net/minecraft/server/level/ServerLevel.java
++++ b/src/main/java/net/minecraft/server/level/ServerLevel.java
+@@ -200,6 +200,13 @@ public class ServerLevel extends Level implements WorldGenLevel, ca.spottedleaf.
+     private int lastSpawnChunkRadius;
+     final EntityTickList entityTickList;
+     // Paper - rewrite chunk system
++
++    // Horizon start - track all world's MSPT
++    public final MinecraftServer.TickTimes tickTimes5s = new MinecraftServer.TickTimes(100);
++    public final MinecraftServer.TickTimes tickTimes10s = new MinecraftServer.TickTimes(200);
++    public final MinecraftServer.TickTimes tickTimes60s = new MinecraftServer.TickTimes(1200);
++    // Horizon end
++
+     private final GameEventDispatcher gameEventDispatcher;
+     public boolean noSave;
+     private final SleepStatus sleepStatus;
