@@ -1,0 +1,24 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: TsubakiDev <i@tsubakidev.cc>
+Date: Fri, 16 Aug 2024 13:15:09 +0800
+Subject: [PATCH] Build changes
+
+
+diff --git a/src/main/java/io/papermc/paper/ServerBuildInfo.java b/src/main/java/io/papermc/paper/ServerBuildInfo.java
+index 8c2c5ea14a839c8767bbf120ae5512f65475cbb0..af1a15c65bfe080a7012392d3abf482f64d64770 100644
+--- a/src/main/java/io/papermc/paper/ServerBuildInfo.java
++++ b/src/main/java/io/papermc/paper/ServerBuildInfo.java
+@@ -32,6 +32,13 @@ public interface ServerBuildInfo {
+     Key BRAND_PURPUR_ID = Key.key("purpurmc", "purpur");
+     // Purpur end
+ 
++    // Horizon start
++    /**
++     * The brand id for Horizon.
++     */
++    Key BRAND_HORIZON_ID = Key.key("mgtown", "horizon");
++    // Horizon end
++
+     /**
+      * Gets the {@code ServerBuildInfo}.
+      *
