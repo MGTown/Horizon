@@ -1,0 +1,115 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: TsubakiDev <i@tsubakidev.cc>
+Date: Fri, 16 Aug 2024 22:06:04 +0800
+Subject: [PATCH] Skip distanceToSqr call in ServerEntity sendChanges
+
+
+diff --git a/src/main/java/net/minecraft/server/level/ServerEntity.java b/src/main/java/net/minecraft/server/level/ServerEntity.java
+index dfd09004063a8d8d93357633c8d23b6acff67b73..d88f1801d12119d59831d70c8fd044b954375ff5 100644
+--- a/src/main/java/net/minecraft/server/level/ServerEntity.java
++++ b/src/main/java/net/minecraft/server/level/ServerEntity.java
+@@ -3,6 +3,7 @@ package net.minecraft.server.level;
+ import com.google.common.collect.Lists;
+ import com.mojang.datafixers.util.Pair;
+ import com.mojang.logging.LogUtils;
++
+ import java.util.ArrayList;
+ import java.util.Collection;
+ import java.util.Collections;
+@@ -13,6 +14,7 @@ import java.util.Set;
+ import java.util.function.Consumer;
+ import java.util.stream.Stream;
+ import javax.annotation.Nullable;
++
+ import net.minecraft.core.component.DataComponents;
+ import net.minecraft.network.protocol.Packet;
+ import net.minecraft.network.protocol.game.ClientGamePacketListener;
+@@ -98,6 +100,7 @@ public class ServerEntity {
+ 
+     // Paper start - fix desync when a player is added to the tracker
+     private boolean forceStateResync;
++
+     public void onPlayerAdd() {
+         this.forceStateResync = true;
+     }
+@@ -105,7 +108,7 @@ public class ServerEntity {
+ 
+     public void sendChanges() {
+         // Paper start - optimise collisions
+-        if (((ca.spottedleaf.moonrise.patches.chunk_system.entity.ChunkSystemEntity)this.entity).moonrise$isHardColliding()) {
++        if (((ca.spottedleaf.moonrise.patches.chunk_system.entity.ChunkSystemEntity) this.entity).moonrise$isHardColliding()) {
+             this.teleportDelay = 9999;
+         }
+         // Paper end - optimise collisions
+@@ -194,19 +197,19 @@ public class ServerEntity {
+ 
+                 if (!this.forceStateResync && !flag6 && this.teleportDelay <= 400 && !this.wasRiding && this.wasOnGround == this.entity.onGround()) { // Paper - fix desync when a player is added to the tracker
+                     if (flag2 || flag3 || this.entity instanceof AbstractArrow) { // Pufferfish
+-                    if ((!flag2 || !flag3) && !(this.entity instanceof AbstractArrow)) {
+-                        if (flag2) {
+-                            packet1 = new ClientboundMoveEntityPacket.Pos(this.entity.getId(), (short) ((int) k), (short) ((int) l), (short) ((int) i1), this.entity.onGround());
++                        if ((!flag2 || !flag3) && !(this.entity instanceof AbstractArrow)) {
++                            if (flag2) {
++                                packet1 = new ClientboundMoveEntityPacket.Pos(this.entity.getId(), (short) ((int) k), (short) ((int) l), (short) ((int) i1), this.entity.onGround());
++                                flag4 = true;
++                            } else if (flag3) {
++                                packet1 = new ClientboundMoveEntityPacket.Rot(this.entity.getId(), (byte) i, (byte) j, this.entity.onGround());
++                                flag5 = true;
++                            }
++                        } else {
++                            packet1 = new ClientboundMoveEntityPacket.PosRot(this.entity.getId(), (short) ((int) k), (short) ((int) l), (short) ((int) i1), (byte) i, (byte) j, this.entity.onGround());
+                             flag4 = true;
+-                        } else if (flag3) {
+-                            packet1 = new ClientboundMoveEntityPacket.Rot(this.entity.getId(), (byte) i, (byte) j, this.entity.onGround());
+                             flag5 = true;
+                         }
+-                    } else {
+-                        packet1 = new ClientboundMoveEntityPacket.PosRot(this.entity.getId(), (short) ((int) k), (short) ((int) l), (short) ((int) i1), (byte) i, (byte) j, this.entity.onGround());
+-                        flag4 = true;
+-                        flag5 = true;
+-                    }
+                     } // Pufferfish
+                 } else {
+                     this.wasOnGround = this.entity.onGround();
+@@ -218,21 +221,24 @@ public class ServerEntity {
+ 
+                 if ((this.trackDelta || this.entity.hasImpulse || this.entity instanceof LivingEntity && ((LivingEntity) this.entity).isFallFlying()) && this.tickCount > 0) {
+                     Vec3 vec3d1 = this.entity.getDeltaMovement();
+-                    double d0 = vec3d1.distanceToSqr(this.lastSentMovement);
+ 
+-                    if (d0 > 1.0E-7D || d0 > 0.0D && vec3d1.lengthSqr() == 0.0D) {
+-                        this.lastSentMovement = vec3d1;
+-                        Entity entity1 = this.entity;
++                    if (vec3d1 != this.lastSentMovement) { // Horizon - Skip distanceToSqr call in ServerEntity sendChanges
++                        double d0 = vec3d1.distanceToSqr(this.lastSentMovement);
+ 
+-                        if (entity1 instanceof AbstractHurtingProjectile) {
+-                            AbstractHurtingProjectile entityfireball = (AbstractHurtingProjectile) entity1;
++                        if (d0 > 1.0E-7D || d0 > 0.0D && vec3d1.lengthSqr() == 0.0D) {
++                            this.lastSentMovement = vec3d1;
++                            Entity entity1 = this.entity;
+ 
+-                            this.broadcast.accept(new ClientboundBundlePacket(List.of(new ClientboundSetEntityMotionPacket(this.entity.getId(), this.lastSentMovement), new ClientboundProjectilePowerPacket(entityfireball.getId(), entityfireball.accelerationPower))));
+-                        } else {
+-                            this.broadcast.accept(new ClientboundSetEntityMotionPacket(this.entity.getId(), this.lastSentMovement));
++                            if (entity1 instanceof AbstractHurtingProjectile) {
++                                AbstractHurtingProjectile entityfireball = (AbstractHurtingProjectile) entity1;
++
++                                this.broadcast.accept(new ClientboundBundlePacket(List.of(new ClientboundSetEntityMotionPacket(this.entity.getId(), this.lastSentMovement), new ClientboundProjectilePowerPacket(entityfireball.getId(), entityfireball.accelerationPower))));
++                            } else {
++                                this.broadcast.accept(new ClientboundSetEntityMotionPacket(this.entity.getId(), this.lastSentMovement));
++                            }
+                         }
+                     }
+-                }
++                } // Horizon - Skip distanceToSqr call in ServerEntity sendChanges
+ 
+                 if (packet1 != null) {
+                     this.broadcast.accept(packet1);
+@@ -438,6 +444,5 @@ public class ServerEntity {
+         if (this.entity instanceof ServerPlayer) {
+             ((ServerPlayer) this.entity).connection.send(packet);
+         }
+-
+     }
+ }
